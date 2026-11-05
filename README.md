@@ -65,7 +65,9 @@ Each build is signed ad-hoc, which macOS treats as a new app, so you'll be asked
 SIGN_IDENTITY="Apple Development" scripts/install-local.sh
 ```
 
-The touch handling lives in the `TouchUpCore` framework, which you can also use in your own app to get raw multitouch data. It keeps its original name so fixes can be shared with Touch Up.
+## Using the touch data in your own app
+
+The touch handling lives in the `TouchUpCore` framework, which you can embed in your own Mac app to get live multitouch data from any touchscreen: for games, research or prototypes. See [TouchUpCore/README.md](TouchUpCore/README.md) for a short example. It keeps its original name and API, so code written for Touch Up's framework works unchanged.
 
 ## License
 
