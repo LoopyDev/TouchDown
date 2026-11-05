@@ -93,7 +93,7 @@ class TouchUp: NSObject, ObservableObject {
         }
 
         let inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
-        NSLog("Touch Up permissions — accessibility: %@, post events: %@, input monitoring: %@",
+        NSLog("TouchDown permissions — accessibility: %@, post events: %@, input monitoring: %@",
               axTrusted ? "granted" : "missing",
               canPostEvents ? "granted" : "missing",
               inputMonitoring == kIOHIDAccessTypeGranted ? "granted"
@@ -524,7 +524,7 @@ enum ConnectionState: Int {
         case .disconnected:
             image = NSImage(systemSymbolName: "rectangle.badge.xmark", accessibilityDescription: nil)
         default:
-            image = NSImage(systemSymbolName: "hand.point.up.left", accessibilityDescription: nil)
+            image = NSImage(systemSymbolName: "hand.point.down", accessibilityDescription: nil)
         }
         
         image?.isTemplate = true
