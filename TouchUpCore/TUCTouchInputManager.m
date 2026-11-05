@@ -762,7 +762,7 @@
         self.identifiedMultitouchGesture = _TUCCursorGestureNone;
         
         self.doubleClickTolerance = 5;
-        self.holdDuration = 0;
+        self.holdDuration = 0.08;
         self.stationaryThreshold = 0.1;
         self.edgeDeadZone = 0;
         self.errorResistance = 0;
