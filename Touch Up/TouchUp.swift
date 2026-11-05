@@ -22,7 +22,7 @@ class TouchUp: NSObject, ObservableObject {
     
     @Published var connectionState: ConnectionState = .disconnected
     
-    @Published var holdDuration: TimeInterval = 0.1
+    @Published var holdDuration: TimeInterval = 0
     @Published var doubleClickDistance: CGFloat = 3 //mm
     @Published var stationaryThreshold: CGFloat = 0.2 // accepted jitter [mm] to still count as stationary
     @Published var edgeDeadZone: CGFloat = 0 // border along the screen edges [pt] in which the cursor is never posted
@@ -141,7 +141,7 @@ extension TouchUp {
         let defaults = UserDefaults.standard
         
         defaults.register(defaults: [
-            "holdDuration" : 0.1,
+            "holdDuration" : 0,
             "doubleClickDistance" : 8,
             "stationaryThreshold" : 0.1,
             "edgeDeadZone" : 0,
@@ -524,16 +524,40 @@ enum ConnectionState: Int {
         case .disconnected:
             image = NSImage(systemSymbolName: "rectangle.badge.xmark", accessibilityDescription: nil)
         default:
-            image = NSImage(systemSymbolName: "hand.point.down", accessibilityDescription: nil)
+            image = NSImage(systemSymbolName: "hand.point.down", accessibilityDescription: nil)?
+                .rotated(byDegrees: 20)
         }
-        
+
         image?.isTemplate = true
-        
+
         return image
     }
-    
+
     var isConnected: Bool {
         return self == .connectedPreferred || self == .connectedHotPlug
+    }
+}
+
+
+extension NSImage {
+    /// A copy rotated clockwise by `degrees`, on a canvas grown just enough that no corner is
+    /// clipped.
+    func rotated(byDegrees degrees: CGFloat) -> NSImage {
+        let radians = -degrees * .pi / 180   // AppKit's y axis points up, so clockwise is negative
+        let original = size
+        let canvas = NSSize(
+            width: abs(original.width * cos(radians)) + abs(original.height * sin(radians)),
+            height: abs(original.width * sin(radians)) + abs(original.height * cos(radians)))
+
+        return NSImage(size: canvas, flipped: false) { _ in
+            let transform = NSAffineTransform()
+            transform.translateX(by: canvas.width / 2, yBy: canvas.height / 2)
+            transform.rotate(byRadians: radians)
+            transform.concat()
+            self.draw(in: NSRect(x: -original.width / 2, y: -original.height / 2,
+                                 width: original.width, height: original.height))
+            return true
+        }
     }
 }
 
