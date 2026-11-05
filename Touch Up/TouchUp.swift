@@ -22,7 +22,7 @@ class TouchUp: NSObject, ObservableObject {
     
     @Published var connectionState: ConnectionState = .disconnected
     
-    @Published var holdDuration: TimeInterval = 0
+    @Published var holdDuration: TimeInterval = 0.25
     @Published var doubleClickDistance: CGFloat = 3 //mm
     @Published var stationaryThreshold: CGFloat = 0.2 // accepted jitter [mm] to still count as stationary
     @Published var edgeDeadZone: CGFloat = 0 // border along the screen edges [pt] in which the cursor is never posted
@@ -141,7 +141,7 @@ extension TouchUp {
         let defaults = UserDefaults.standard
         
         defaults.register(defaults: [
-            "holdDuration" : 0,
+            "holdDuration" : 0.25,
             "doubleClickDistance" : 8,
             "stationaryThreshold" : 0.1,
             "edgeDeadZone" : 0,
@@ -472,7 +472,7 @@ extension TouchUp {
             
         case \.holdDuration:
             return("Hold Duration",
-                   "How long do you have to hold finger to initiate hold&drag")
+                   "How long to rest your finger before moving it to drag instead of scroll. Move sooner to scroll.")
             
         case \.doubleClickDistance:
             return("Double Click Zone",
@@ -480,7 +480,7 @@ extension TouchUp {
 
         case \.stationaryThreshold:
             return("Jitter Tolerance",
-                   "Increase, if taps and long presses are not registering reliably; decrease for more responsive dragging.")
+                   "How much movement during a drag is ignored as finger jitter. Increase if the pointer twitches while your finger is still; decrease if slow drags feel sticky.")
 
         case \.edgeDeadZone:
             return("Edge Dead Zone",

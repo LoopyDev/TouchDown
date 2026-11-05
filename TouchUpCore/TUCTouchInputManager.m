@@ -17,9 +17,11 @@
 @property (weak, nullable) TUCTouch *cursorTouch;
 @property (weak, nullable) TUCTouch *gestureAdditionalTouch;
 
-@property BOOL cursorTouchQualifiedForTap; // if the cursor entered moving state once it can no longer be interpreted as tap
-@property BOOL cursorTouchDidHold; //
-@property (strong) NSDate *cursorTouchStationarySinceDate;
+@property BOOL cursorTouchQualifiedForTap; // NO once the finger has left the slop circle
+@property BOOL cursorTouchDidHold;         // rested for `holdDuration` before moving: drag, not scroll
+@property BOOL cursorTouchLeftSlop;        // has moved beyond `touchSlop` from where it landed
+@property CGPoint cursorTouchDownLocation;
+@property (strong) NSDate *cursorTouchDownDate;
 
 @property CGFloat pinchDistance;
 
@@ -123,7 +125,9 @@
         self.cursorTouch = touch;
         self.cursorTouchQualifiedForTap = YES;
         self.cursorTouchDidHold = NO;
-        self.cursorTouchStationarySinceDate = nil;
+        self.cursorTouchLeftSlop = NO;
+        self.cursorTouchDownLocation = point;
+        self.cursorTouchDownDate = [NSDate date];
     }
     
     [touch setLocation: point];
@@ -149,17 +153,23 @@
         CGFloat dyMM = (touch.location.y - touch.previousLocation.y) * physicalSize.height;
         CGFloat movedDistanceMM = sqrt(dxMM * dxMM + dyMM * dyMM);
         BOOL isStationary = movedDistanceMM < self.stationaryThreshold;
-        
-        if (touch.uuid == self.cursorTouch.uuid) {
-            if (!isStationary) {
+
+        // Movement starts when the finger leaves a small circle around where it landed, not
+        // on the first report that differs: landing wobble stays inside the circle, so it
+        // neither cancels a tap nor counts as resting or moving. How long the finger stayed
+        // inside decides what the movement is — a quick swipe scrolls, a rest then move drags.
+        if (touch.uuid == self.cursorTouch.uuid && !self.cursorTouchLeftSlop) {
+            CGFloat fromDownXMM = (touch.location.x - self.cursorTouchDownLocation.x) * physicalSize.width;
+            CGFloat fromDownYMM = (touch.location.y - self.cursorTouchDownLocation.y) * physicalSize.height;
+            if (sqrt(fromDownXMM * fromDownXMM + fromDownYMM * fromDownYMM) > self.touchSlop) {
+                self.cursorTouchLeftSlop = YES;
                 self.cursorTouchQualifiedForTap = NO;
-                self.cursorTouchStationarySinceDate = nil;
-                
-            } else if (touch.phase !=  NSTouchPhaseStationary) {
-                self.cursorTouchStationarySinceDate = [NSDate date];
+                if ([[NSDate date] timeIntervalSinceDate:self.cursorTouchDownDate] >= self.holdDuration) {
+                    self.cursorTouchDidHold = YES;
+                }
             }
         }
-        
+
         [touch setPhase:isStationary ? NSTouchPhaseStationary : NSTouchPhaseMoved];
     }
     
@@ -204,18 +214,16 @@
     }
     
     
-    else if (phase == NSTouchPhaseStationary) {
-        NSTimeInterval holdDuration = 0;
-        if (self.cursorTouchStationarySinceDate != nil) {
-            holdDuration = [[NSDate date] timeIntervalSinceDate:self.cursorTouchStationarySinceDate];
-        }
-        if (self.cursorTouchQualifiedForTap && holdDuration > self.holdDuration) {
-            // the user left the finger on the screen for the min duration required to produce a hold
+    else if (phase == NSTouchPhaseStationary || (phase == NSTouchPhaseMoved && !self.cursorTouchLeftSlop)) {
+        // Resting, or wobbling inside the slop circle: nothing moves yet. Staying long enough
+        // makes this a hold — a long press, or a drag once the finger moves.
+        if (self.cursorTouchQualifiedForTap &&
+            [[NSDate date] timeIntervalSinceDate:self.cursorTouchDownDate] >= self.holdDuration) {
             self.cursorTouchDidHold = YES;
         }
-        
+
         [self checkForSecondaryClick];
-        
+
         return;
     }
     
@@ -756,13 +764,14 @@
         self.postMouseEvents = YES;
         
         self.cursorTouchQualifiedForTap = NO;
-        self.cursorTouchStationarySinceDate = nil;
-        
+        self.cursorTouchDownDate = [NSDate date];
+
         self.frameIDsByLocationID = [NSMutableDictionary new];
         self.identifiedMultitouchGesture = _TUCCursorGestureNone;
-        
+
         self.doubleClickTolerance = 5;
         self.holdDuration = 0.08;
+        self.touchSlop = 1.5;
         self.stationaryThreshold = 0.1;
         self.edgeDeadZone = 0;
         self.errorResistance = 0;

@@ -74,7 +74,7 @@ struct SettingsView: View {
     
     var parameterSettings: some View {
         Group {
-            Slider(value: $model.holdDuration, in: 0.0...0.16, step: 0.02){
+            Slider(value: $model.holdDuration, in: 0.0...0.5, step: 0.05){
                 SettingsExplanationLabel(labels: model.uiLabels(for: \.holdDuration))
             }
             
