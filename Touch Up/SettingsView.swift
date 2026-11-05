@@ -68,6 +68,10 @@ struct SettingsView: View {
             Toggle(isOn: $model.isClickWindowToFrontEnabled) {
                 SettingsExplanationLabel(labels: model.uiLabels(for: \.isClickWindowToFrontEnabled))
             }
+
+            Toggle(isOn: $model.isReturnPointerEnabled) {
+                SettingsExplanationLabel(labels: model.uiLabels(for: \.isReturnPointerEnabled))
+            }
         }
     }
     

@@ -70,6 +70,14 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property BOOL ignoreOriginTouches;
 
+/**
+ When YES, the pointer goes back to where it was before the touch once the touch is over: right
+ after a tap or a drag, and after a scroll has finished coasting. Consecutive touches return to
+ where the pointer was before the first one. If the mouse is moved meanwhile, it is left alone.
+ The default value is NO.
+ */
+@property BOOL returnsPointerAfterTouch;
+
 
 - (void)start;
 

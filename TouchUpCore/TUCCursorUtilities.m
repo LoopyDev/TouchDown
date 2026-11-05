@@ -200,6 +200,10 @@
 
 
 
+- (BOOL)isMomentumScrolling {
+    return self.momentumScrollTimer != nil;
+}
+
 - (void)cancelMomentumScroll {
     if (self.momentumScrollTimer != nil) {
         [self.momentumScrollTimer invalidate];

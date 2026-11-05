@@ -34,6 +34,7 @@ class TouchUp: NSObject, ObservableObject {
     @Published var isMagnificationEnabled = false
     @Published var isClickWindowToFrontEnabled = false
     @Published var isClickOnLiftEnabled = false
+    @Published var isReturnPointerEnabled = false
     @Published var isExclusiveAccessEnabled: Bool = false
 
     @Published var areAdditionalDigitizerRotationSettingsVisible = false
@@ -153,6 +154,7 @@ extension TouchUp {
             "isMagnificationEnabled" : true,
             "isClickWindowToFrontEnabled" : false,
             "isClickOnLiftEnabled" : false,
+            "isReturnPointerEnabled" : false,
             "isExclusiveAccessEnabled" : false,
             "areAdditionalDigitizerRotationSettingsVisible" : false
         ])
@@ -163,6 +165,7 @@ extension TouchUp {
         edgeDeadZone = defaults.double(forKey: "edgeDeadZone")
         errorResistance = defaults.integer(forKey: "errorResistance")
         ignoreOriginTouches = defaults.bool(forKey: "ignoreOriginTouches")
+        isReturnPointerEnabled = defaults.bool(forKey: "isReturnPointerEnabled")
         isExclusiveAccessEnabled = defaults.bool(forKey: "isExclusiveAccessEnabled")
 
 
@@ -174,6 +177,7 @@ extension TouchUp {
             $edgeDeadZone.assign(to: \.edgeDeadZone, on: touchManager),
             $errorResistance.assign(to: \.errorResistance, on: touchManager),
             $ignoreOriginTouches.assign(to: \.ignoreOriginTouches, on: touchManager),
+            $isReturnPointerEnabled.assign(to: \.returnsPointerAfterTouch, on: touchManager),
             
             $isExclusiveAccessEnabled.sink { [weak touchManager] seized in
                 touchManager?.setTouchscreensSeized(seized)
@@ -207,6 +211,7 @@ extension TouchUp {
         defaults.set(isMagnificationEnabled, forKey: "isMagnificationEnabled")
         defaults.set(isClickWindowToFrontEnabled, forKey: "isClickWindowToFrontEnabled")
         defaults.set(isClickOnLiftEnabled, forKey: "isClickOnLiftEnabled")
+        defaults.set(isReturnPointerEnabled, forKey: "isReturnPointerEnabled")
         defaults.set(areAdditionalDigitizerRotationSettingsVisible, forKey: "areAdditionalDigitizerRotationSettingsVisible")
     }
 
@@ -466,6 +471,10 @@ extension TouchUp {
             return("Bring Windows to Front",
                    "When touching a window that is not frontmost, bring it to front first. (EXPERIMENTAL)")
             
+        case \.isReturnPointerEnabled:
+            return("Return Pointer After Touch",
+                   "After a tap, drag or scroll, move the pointer back to where it was. Useful when the touchscreen is a second screen. What you tapped still becomes the active window.")
+
         case \.isClickOnLiftEnabled:
             return("Point and click",
                    "Very reduced input set for exhibits: Move cursor by dragging, and click by releasing. Overrides scrolling and dragging functionality.")
