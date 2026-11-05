@@ -70,6 +70,20 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property BOOL ignoreOriginTouches;
 
+/**
+ When YES, the pointer goes back to where it was before the touch once the touch is over.
+ Consecutive touches return to where the pointer was before the first one. If the mouse is moved
+ meanwhile, it is left alone. The default value is NO.
+ */
+@property BOOL returnsPointerAfterTouch;
+
+/**
+ What `returnsPointerAfterTouch` does after a swipe that is still coasting. NO returns right
+ away and stops the coasting; YES lets the scroll finish first, since coasting scrolls whatever
+ is under the pointer. The default value is NO.
+ */
+@property BOOL pointerReturnWaitsForScroll;
+
 
 - (void)start;
 

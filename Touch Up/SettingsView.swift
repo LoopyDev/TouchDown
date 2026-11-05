@@ -68,6 +68,19 @@ struct SettingsView: View {
             Toggle(isOn: $model.isClickWindowToFrontEnabled) {
                 SettingsExplanationLabel(labels: model.uiLabels(for: \.isClickWindowToFrontEnabled))
             }
+
+            Toggle(isOn: $model.isReturnPointerEnabled) {
+                SettingsExplanationLabel(labels: model.uiLabels(for: \.isReturnPointerEnabled))
+            }
+
+            if model.isReturnPointerEnabled {
+                Picker(selection: $model.isPointerReturnWaitingForScroll) {
+                    Text("Return Immediately").tag(false)
+                    Text("Wait for Scrolling to Stop").tag(true)
+                } label: {
+                    SettingsExplanationLabel(labels: model.uiLabels(for: \.isPointerReturnWaitingForScroll))
+                }
+            }
         }
     }
     

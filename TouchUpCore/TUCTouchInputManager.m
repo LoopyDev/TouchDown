@@ -23,6 +23,10 @@
 @property CGPoint cursorTouchDownLocation;
 @property (strong) NSDate *cursorTouchDownDate;
 
+@property BOOL hasPointerToReturn;              // a touch moved the pointer away from `pointerReturnLocation`
+@property CGPoint pointerReturnLocation;        // where the pointer was before the first touch
+@property (strong, nullable) NSTimer *pointerReturnTimer;
+
 @property CGFloat pinchDistance;
 
 @property TUCCursorGesture identifiedMultitouchGesture;
@@ -88,6 +92,7 @@
 
     if ([[self activeTouches] count] == 0) {
         [self stopCurrentGesture];
+        [self schedulePointerReturn];
     }
 
     self.frameIDsByLocationID[@(locationID)] = @(currentFrameID + 1);
@@ -209,6 +214,7 @@
     
     
     if (phase == NSTouchPhaseBegan) {
+        [self rememberPointerForReturn];
         [self performMouseEventForGesture:TUCCursorGestureTouchDown];
         return;
     }
@@ -314,6 +320,48 @@
     } else {
         [self performMouseEventForGesture:TUCCursorGestureDrag];
     }
+}
+
+
+#pragma mark - Returning the Pointer
+
+/// Called as a touch moves the pointer. Keeps the position from before the first of several
+/// consecutive touches, so a series of taps returns to where the user was working.
+- (void)rememberPointerForReturn {
+    if (!self.returnsPointerAfterTouch) return;
+
+    [self.pointerReturnTimer invalidate];
+    self.pointerReturnTimer = nil;
+
+    if (!self.hasPointerToReturn) {
+        self.pointerReturnLocation = [[TUCCursorUtilities sharedInstance] currentCursorLocation];
+        self.hasPointerToReturn = YES;
+    }
+}
+
+/// Called once no fingers are left on the screen. The return is deferred so the click is
+/// delivered first, and, if `pointerReturnWaitsForScroll`, until a scroll has finished coasting.
+/// Otherwise moving the pointer stops the coasting.
+- (void)schedulePointerReturn {
+    if (!self.returnsPointerAfterTouch || !self.hasPointerToReturn || self.pointerReturnTimer) return;
+
+    TUCCursorUtilities *utils = [TUCCursorUtilities sharedInstance];
+    // Where the touch left the pointer. If it isn't there any more when the return is due, the
+    // user has moved the mouse themselves, and it stays where they put it.
+    CGPoint leftAt = [utils currentCursorLocation];
+
+    __weak typeof(self) weakSelf = self;
+    self.pointerReturnTimer = [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer *timer) {
+        if (weakSelf.pointerReturnWaitsForScroll && [utils isMomentumScrolling]) return;
+
+        [timer invalidate];
+        weakSelf.pointerReturnTimer = nil;
+        weakSelf.hasPointerToReturn = NO;
+
+        CGPoint now = [utils currentCursorLocation];
+        if (!weakSelf.returnsPointerAfterTouch || hypot(now.x - leftAt.x, now.y - leftAt.y) > 2) return;
+        [utils moveCursorTo:weakSelf.pointerReturnLocation];
+    }];
 }
 
 
