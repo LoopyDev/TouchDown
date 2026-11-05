@@ -7,6 +7,7 @@
 
 import AppKit
 import Combine
+import IOKit.hid
 import TouchUpCore
 
 class TouchUp: NSObject, ObservableObject {
@@ -82,7 +83,23 @@ class TouchUp: NSObject, ObservableObject {
     
     func checkAccessibilityAccessGranted() {
         let checkOptPrompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString
-        self.isAccessibilityAccessGranted = AXIsProcessTrustedWithOptions([checkOptPrompt: true] as CFDictionary?)
+        let axTrusted = AXIsProcessTrustedWithOptions([checkOptPrompt: true] as CFDictionary?)
+
+        // Posting mouse events is gated separately from Accessibility trust: a sandboxed app
+        // can be AX-trusted and still have every CGEventPost silently dropped.
+        let canPostEvents = CGPreflightPostEventAccess()
+        if !canPostEvents {
+            CGRequestPostEventAccess()
+        }
+
+        let inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
+        NSLog("Touch Up permissions — accessibility: %@, post events: %@, input monitoring: %@",
+              axTrusted ? "granted" : "missing",
+              canPostEvents ? "granted" : "missing",
+              inputMonitoring == kIOHIDAccessTypeGranted ? "granted"
+                : inputMonitoring == kIOHIDAccessTypeDenied ? "denied" : "not determined")
+
+        self.isAccessibilityAccessGranted = axTrusted && canPostEvents
     }
     
     func grantAccessibilityAccess() {

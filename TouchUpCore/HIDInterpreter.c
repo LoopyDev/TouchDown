@@ -813,7 +813,10 @@ void OpenHIDManager(void *delegate) {
                                     kCFRunLoopCommonModes);
     
     IOHIDOptionsType openOptions = gSeizeTouchDevices ? kIOHIDOptionsTypeSeizeDevice : kIOHIDOptionsTypeNone;
-    IOHIDManagerOpen(gHidManager, openOptions);
+    IOReturn openResult = IOHIDManagerOpen(gHidManager, openOptions);
+    if (openResult != kIOReturnSuccess) {
+        fprintf(stderr, "IOHIDManagerOpen failed: 0x%08x\n", openResult);
+    }
 }
 
 
