@@ -41,4 +41,5 @@ rm -rf /Applications/TouchDown.app
 ditto "$app" /Applications/TouchDown.app
 open /Applications/TouchDown.app
 
-echo "Installed /Applications/TouchDown.app ($(codesign -dvv /Applications/TouchDown.app 2>&1 | grep -m1 '^Authority=' || echo 'ad-hoc'))"
+signer=$(codesign -dvv /Applications/TouchDown.app 2>&1 | grep '^Authority=' | head -1 | cut -d= -f2-)
+echo "Installed /Applications/TouchDown.app, signed by ${signer:-ad-hoc}"
