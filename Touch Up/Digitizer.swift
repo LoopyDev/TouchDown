@@ -8,7 +8,8 @@
 import Foundation
 import CoreGraphics
 
-/// Per-digitizer settings, keyed by `HIDLocationID` and persisted to `UserDefaults`.
+/// Per-digitizer settings. Live copies are keyed by `HIDLocationID`; persisted copies live in
+/// a `DigitizerRecord` so they can follow the device to another USB port.
 ///
 /// Only the screen identity (`screenID` + `screenUUID`) and `additionalRotation` are stored.
 /// The actually resolved `TUCScreen` is *not* kept here: the screen list is rebuilt from
@@ -23,6 +24,76 @@ struct DigitizerConfig: Codable, Hashable {
     /// Affine correction for a digitizer that doesn't line up with its panel. `nil` = none.
     /// Optional so configs saved by older versions still decode.
     var calibration: DigitizerCalibration?
+}
+
+
+/// What a digitizer *is*, as opposed to which USB port it's plugged into. Used to find its
+/// saved settings again after it moves to another port.
+struct DigitizerIdentity: Codable, Hashable {
+    var vendorID: UInt16
+    var productID: UInt16
+    /// Often missing, and some cheap panels report the same serial on every unit, so it is
+    /// only trusted while it's unique (see `DigitizerRecord.match`).
+    var serialNumber: String?
+
+    var model: DigitizerIdentity { DigitizerIdentity(vendorID: vendorID, productID: productID, serialNumber: nil) }
+}
+
+
+/// One persisted digitizer: its identity, the port it was last seen on, and its settings.
+struct DigitizerRecord: Codable, Hashable, Identifiable {
+    var id = UUID()
+    /// `nil` for records migrated from the old port-keyed format, or if the device's USB
+    /// properties couldn't be read.
+    var identity: DigitizerIdentity?
+    var lastLocationID: HIDLocationID
+    var config: DigitizerConfig
+
+    /// Finds the saved record for a digitizer that just connected. In order of confidence:
+    ///  1. same model and serial number — follows the device to any port
+    ///  2. same model on the same port — tells apart identical panels without usable serials
+    ///  3. same model, when it's the only one saved and the only one connected
+    ///  4. same port, for records without an identity (migrated from the old format)
+    ///
+    /// - Parameters:
+    ///   - claimed: IDs of records already matched to other connected digitizers.
+    ///   - otherConnected: identities of the *other* currently connected digitizers.
+    static func match(identity: DigitizerIdentity?, locationID: HIDLocationID,
+                      in records: [DigitizerRecord], claimed: Set<UUID>,
+                      otherConnected: [DigitizerIdentity?]) -> DigitizerRecord? {
+        let free = records.filter { !claimed.contains($0.id) }
+
+        if let identity {
+            // A serial is only trusted while no other record or connected device shares it.
+            if let serial = identity.serialNumber, !serial.isEmpty,
+               records.filter({ $0.identity == identity }).count == 1,
+               !otherConnected.contains(identity),
+               let record = free.first(where: { $0.identity == identity }) {
+                return record
+            }
+
+            // Same model, minus records that provably belong to another unit: two different
+            // non-empty serials can't be the same device, even if one used to be on this port.
+            func couldBeThisDevice(_ record: DigitizerRecord) -> Bool {
+                guard let other = record.identity, other.model == identity.model else { return false }
+                guard let mine = identity.serialNumber, !mine.isEmpty,
+                      let theirs = other.serialNumber, !theirs.isEmpty else { return true }
+                return mine == theirs
+            }
+
+            let candidates = records.filter(couldBeThisDevice)
+            let freeCandidates = candidates.filter { !claimed.contains($0.id) }
+            if let record = freeCandidates.first(where: { $0.lastLocationID == locationID }) {
+                return record
+            }
+            if candidates.count == 1, freeCandidates.count == 1,
+               !otherConnected.contains(where: { $0?.model == identity.model }) {
+                return freeCandidates[0]
+            }
+        }
+
+        return free.first { $0.identity == nil && $0.lastLocationID == locationID }
+    }
 }
 
 
@@ -124,6 +195,12 @@ struct Digitizer: Codable, Hashable, Identifiable {
 
     var isUniquelyIdentifiable: Bool {
         serialNumber != nil
+    }
+
+    /// `nil` if the USB properties couldn't be read (e.g. a non-USB digitizer).
+    var identity: DigitizerIdentity? {
+        guard let vendorID, let productID else { return nil }
+        return DigitizerIdentity(vendorID: vendorID, productID: productID, serialNumber: serialNumber)
     }
     
     var id: HIDLocationID {
