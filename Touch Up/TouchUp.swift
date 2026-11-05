@@ -35,6 +35,7 @@ class TouchUp: NSObject, ObservableObject {
     @Published var isClickWindowToFrontEnabled = false
     @Published var isClickOnLiftEnabled = false
     @Published var isReturnPointerEnabled = false
+    @Published var isPointerReturnWaitingForScroll = false
     @Published var isExclusiveAccessEnabled: Bool = false
 
     @Published var areAdditionalDigitizerRotationSettingsVisible = false
@@ -155,6 +156,7 @@ extension TouchUp {
             "isClickWindowToFrontEnabled" : false,
             "isClickOnLiftEnabled" : false,
             "isReturnPointerEnabled" : false,
+            "isPointerReturnWaitingForScroll" : false,
             "isExclusiveAccessEnabled" : false,
             "areAdditionalDigitizerRotationSettingsVisible" : false
         ])
@@ -166,6 +168,7 @@ extension TouchUp {
         errorResistance = defaults.integer(forKey: "errorResistance")
         ignoreOriginTouches = defaults.bool(forKey: "ignoreOriginTouches")
         isReturnPointerEnabled = defaults.bool(forKey: "isReturnPointerEnabled")
+        isPointerReturnWaitingForScroll = defaults.bool(forKey: "isPointerReturnWaitingForScroll")
         isExclusiveAccessEnabled = defaults.bool(forKey: "isExclusiveAccessEnabled")
 
 
@@ -178,6 +181,7 @@ extension TouchUp {
             $errorResistance.assign(to: \.errorResistance, on: touchManager),
             $ignoreOriginTouches.assign(to: \.ignoreOriginTouches, on: touchManager),
             $isReturnPointerEnabled.assign(to: \.returnsPointerAfterTouch, on: touchManager),
+            $isPointerReturnWaitingForScroll.assign(to: \.pointerReturnWaitsForScroll, on: touchManager),
             
             $isExclusiveAccessEnabled.sink { [weak touchManager] seized in
                 touchManager?.setTouchscreensSeized(seized)
@@ -212,6 +216,7 @@ extension TouchUp {
         defaults.set(isClickWindowToFrontEnabled, forKey: "isClickWindowToFrontEnabled")
         defaults.set(isClickOnLiftEnabled, forKey: "isClickOnLiftEnabled")
         defaults.set(isReturnPointerEnabled, forKey: "isReturnPointerEnabled")
+        defaults.set(isPointerReturnWaitingForScroll, forKey: "isPointerReturnWaitingForScroll")
         defaults.set(areAdditionalDigitizerRotationSettingsVisible, forKey: "areAdditionalDigitizerRotationSettingsVisible")
     }
 
@@ -474,6 +479,10 @@ extension TouchUp {
         case \.isReturnPointerEnabled:
             return("Return Pointer After Touch",
                    "After a tap, drag or scroll, move the pointer back to where it was. Useful when the touchscreen is a second screen. What you tapped still becomes the active window.")
+
+        case \.isPointerReturnWaitingForScroll:
+            return("After a Swipe",
+                   "Scrolling keeps coasting after you lift your finger, and it scrolls whatever is under the pointer. Return immediately to stop the coasting, or wait for it to finish.")
 
         case \.isClickOnLiftEnabled:
             return("Point and click",

@@ -340,7 +340,8 @@
 }
 
 /// Called once no fingers are left on the screen. The return is deferred so the click is
-/// delivered first, and so a scroll can finish coasting where it started.
+/// delivered first, and, if `pointerReturnWaitsForScroll`, until a scroll has finished coasting.
+/// Otherwise moving the pointer stops the coasting.
 - (void)schedulePointerReturn {
     if (!self.returnsPointerAfterTouch || !self.hasPointerToReturn || self.pointerReturnTimer) return;
 
@@ -351,7 +352,7 @@
 
     __weak typeof(self) weakSelf = self;
     self.pointerReturnTimer = [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer *timer) {
-        if ([utils isMomentumScrolling]) return;
+        if (weakSelf.pointerReturnWaitsForScroll && [utils isMomentumScrolling]) return;
 
         [timer invalidate];
         weakSelf.pointerReturnTimer = nil;
