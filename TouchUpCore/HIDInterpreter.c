@@ -26,7 +26,10 @@ typedef struct {
 
     IOHIDQueueRef           queue;
     Boolean                 areElementRefsSet;
-    
+    /// The Digitizer/Touch Screen application collection (retained), found up front so input
+    /// from sibling collections on the same interface — e.g. a mouse fallback — is ignored.
+    IOHIDElementRef         touchscreenCollection;
+
     IOHIDElementRef         applicationCollectionElement;
     IOHIDElementRef         scanTimeElement;
     CFMutableArrayRef       touchCollectionElements;
@@ -123,6 +126,7 @@ void DeallocateDeviceState(IOHIDDeviceRef device) {
         IOHIDQueueStop(state->queue);
         CFRelease(state->queue);
     }
+    if (state->touchscreenCollection) CFRelease(state->touchscreenCollection);
     if (state->touchCollectionElements) CFRelease(state->touchCollectionElements);
     if (state->contactIdentifiers) CFRelease(state->contactIdentifiers);
     if (state->storedInputValues) CFRelease(state->storedInputValues);
@@ -570,6 +574,94 @@ static void Handle_QueueValueAvailable(
 }
 
 
+/// The top-level (application) collection an element belongs to.
+static IOHIDElementRef ApplicationCollectionOf(IOHIDElementRef elem) {
+    IOHIDElementRef current = elem;
+    IOHIDElementRef parent;
+    while ((parent = IOHIDElementGetParent(current)) != NULL) {
+        current = parent;
+    }
+    return current;
+}
+
+static Boolean IsApplicationCollection(IOHIDElementRef el, uint32_t page, uint32_t usage) {
+    return IOHIDElementGetType(el) == kIOHIDElementTypeCollection
+        && IOHIDElementGetCollectionType(el) == kIOHIDElementCollectionTypeApplication
+        && IOHIDElementGetUsagePage(el) == page
+        && IOHIDElementGetUsage(el) == usage;
+}
+
+/// Number of logical sub-collections carrying a ContactIdentifier, i.e. finger slots.
+static CFIndex CountContactSlots(IOHIDElementRef collection) {
+    CFIndex slots = 0;
+    CFArrayRef kids = IOHIDElementGetChildren(collection);
+    for (CFIndex i = 0; kids && i < CFArrayGetCount(kids); i++) {
+        IOHIDElementRef kid = (IOHIDElementRef)CFArrayGetValueAtIndex(kids, i);
+        if (IOHIDElementGetType(kid) != kIOHIDElementTypeCollection) continue;
+        CFArrayRef grandkids = IOHIDElementGetChildren(kid);
+        for (CFIndex j = 0; grandkids && j < CFArrayGetCount(grandkids); j++) {
+            IOHIDElementRef g = (IOHIDElementRef)CFArrayGetValueAtIndex(grandkids, j);
+            if (IOHIDElementGetUsagePage(g) == kHIDPage_Digitizer &&
+                IOHIDElementGetUsage(g) == kHIDUsage_Dig_ContactIdentifier) {
+                slots++;
+                break;
+            }
+        }
+    }
+    return slots;
+}
+
+/// Finds the Digitizer/Touch Screen application collection with the most finger slots.
+/// Returns a retained element, or NULL.
+static IOHIDElementRef CopyTouchscreenCollection(IOHIDDeviceRef dev) {
+    CFArrayRef elements = IOHIDDeviceCopyMatchingElements(dev, NULL, kIOHIDOptionsTypeNone);
+    if (!elements) return NULL;
+
+    IOHIDElementRef best = NULL;
+    CFIndex bestSlots = -1;
+    for (CFIndex i = 0; i < CFArrayGetCount(elements); i++) {
+        IOHIDElementRef el = (IOHIDElementRef)CFArrayGetValueAtIndex(elements, i);
+        if (!IsApplicationCollection(el, kHIDPage_Digitizer, kHIDUsage_Dig_TouchScreen)) continue;
+        CFIndex slots = CountContactSlots(el);
+        if (slots > bestSlots) {
+            best = el;
+            bestSlots = slots;
+        }
+    }
+    if (best) CFRetain(best);
+    CFRelease(elements);
+    return best;
+}
+
+/**
+ Many digitizers boot as a single-touch mouse and only report multitouch once the host sets
+ Device Mode (in the Device Configuration collection) to "multi-input", which Windows does on
+ every connect. The setting is lost on unplug or power loss. Devices without the collection
+ are left alone.
+ */
+static void RequestMultiInputMode(IOHIDDeviceRef dev) {
+    const CFIndex kDeviceModeMultiInput = 2;
+
+    CFArrayRef elements = IOHIDDeviceCopyMatchingElements(dev, NULL, kIOHIDOptionsTypeNone);
+    if (!elements) return;
+
+    for (CFIndex i = 0; i < CFArrayGetCount(elements); i++) {
+        IOHIDElementRef el = (IOHIDElementRef)CFArrayGetValueAtIndex(elements, i);
+        if (IOHIDElementGetType(el) != kIOHIDElementTypeFeature ||
+            IOHIDElementGetUsagePage(el) != kHIDPage_Digitizer ||
+            IOHIDElementGetUsage(el) != 0x52 /* Device Mode */ ||
+            !IsApplicationCollection(ApplicationCollectionOf(el), kHIDPage_Digitizer, 0x0E /* Device Configuration */)) {
+            continue;
+        }
+        IOHIDValueRef value = IOHIDValueCreateWithIntegerValue(kCFAllocatorDefault, el, 0, kDeviceModeMultiInput);
+        IOReturn result = IOHIDDeviceSetValue(dev, el, value);
+        CFRelease(value);
+        printf("Requested multi-input Device Mode: 0x%08x\n", result);
+    }
+    CFRelease(elements);
+}
+
+
 static void Handle_InputValueCallback (
     void *          inContext,      // context from IOHIDManagerRegisterInputValueCallback
     IOReturn        inResult,       // completion result for the input value operation
@@ -579,15 +671,23 @@ static void Handle_InputValueCallback (
     HIDDeviceState *device = DeviceStateForRef((IOHIDDeviceRef)inContext);
     if (!device) return;
 
+    IOHIDElementRef elem = IOHIDValueGetElement(inIOHIDValueRef);
+
+    // Combo devices put a mouse fallback (and vendor collections) on the same interface.
+    // Their reports must neither be read as touches nor pick the collection we parse.
+    if (device->touchscreenCollection &&
+        !CFEqual(ApplicationCollectionOf(elem), device->touchscreenCollection)) {
+        return;
+    }
+
     if(!device->areElementRefsSet) {
-        IOHIDElementRef e = IOHIDValueGetElement(inIOHIDValueRef);
-        IdentifyElements(device, e, TRUE);
+        // Only reached when no touchscreen collection was found up front.
+        IdentifyElements(device, elem, TRUE);
         device->areElementRefsSet = TRUE;
     }
-    
+
     //PrintInput(inIOHIDValueRef);
-    IOHIDElementRef elem = IOHIDValueGetElement(inIOHIDValueRef);
-    
+
     Boolean added = IOHIDQueueContainsElement(device->queue, elem);
     if(!added) {
         IOHIDQueueAddElement(device->queue, elem);
@@ -643,6 +743,14 @@ static HIDDeviceState* RegisterTouchDevice(IOHIDDeviceRef dev, uint32_t location
     HIDDeviceState *device = AllocateDeviceState(dev, locationID);
     if (!device) return NULL;
     device->contactCollectionCount = contactCount;
+
+    device->touchscreenCollection = CopyTouchscreenCollection(dev);
+    if (device->touchscreenCollection) {
+        IdentifyElements(device, device->touchscreenCollection, TRUE);
+        device->areElementRefsSet = TRUE;
+    }
+
+    RequestMultiInputMode(dev);
 
     void *context = (void *)dev;
 
@@ -813,7 +921,10 @@ void OpenHIDManager(void *delegate) {
                                     kCFRunLoopCommonModes);
     
     IOHIDOptionsType openOptions = gSeizeTouchDevices ? kIOHIDOptionsTypeSeizeDevice : kIOHIDOptionsTypeNone;
-    IOHIDManagerOpen(gHidManager, openOptions);
+    IOReturn openResult = IOHIDManagerOpen(gHidManager, openOptions);
+    if (openResult != kIOReturnSuccess) {
+        fprintf(stderr, "IOHIDManagerOpen failed: 0x%08x\n", openResult);
+    }
 }
 
 

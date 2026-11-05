@@ -104,6 +104,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.debugOverlay.makeVisible(onScreen: screen, digitizerLocationID: locationID)
         }
     }
+
+    var calibrationOverlay: CalibrationOverlay?
+
+    func showCalibration(on screen: TUCScreen?, digitizer locationID: HIDLocationID) {
+        guard calibrationOverlay == nil,
+              let screen = screen ?? TUCScreen.allScreens().first else { return }
+
+        // Same as the debug overlay: don't let calibration touches click things.
+        let preState = self.model.isPublishingMouseEventsEnabled
+        self.model.isPublishingMouseEventsEnabled = false
+
+        let overlay = CalibrationOverlay.overlay(model: model, locationID: locationID) { [weak self] result in
+            guard let self else { return }
+            if let result {
+                self.model.setCalibration(result, forDigitizer: locationID)
+            }
+            self.model.isPublishingMouseEventsEnabled = preState
+            // Close after the current SwiftUI update has finished.
+            DispatchQueue.main.async {
+                self.calibrationOverlay?.close()
+                self.calibrationOverlay = nil
+            }
+        }
+        calibrationOverlay = overlay
+        overlay.makeVisible(onScreen: screen)
+    }
 }
 
 
@@ -120,7 +146,7 @@ class SettingsWindow: NSWindow {
                                     defer: true,
                                     screen: nil)
         
-        window.title = "Touch Up Settings"
+        window.title = "TouchDown Settings"
         window.tabbingMode = .disallowed
         window.model = model
         window.level = .screenSaver

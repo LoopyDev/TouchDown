@@ -7,6 +7,7 @@
 
 import AppKit
 import Combine
+import IOKit.hid
 import TouchUpCore
 
 class TouchUp: NSObject, ObservableObject {
@@ -21,7 +22,7 @@ class TouchUp: NSObject, ObservableObject {
     
     @Published var connectionState: ConnectionState = .disconnected
     
-    @Published var holdDuration: TimeInterval = 0.1
+    @Published var holdDuration: TimeInterval = 0
     @Published var doubleClickDistance: CGFloat = 3 //mm
     @Published var stationaryThreshold: CGFloat = 0.2 // accepted jitter [mm] to still count as stationary
     @Published var edgeDeadZone: CGFloat = 0 // border along the screen edges [pt] in which the cursor is never posted
@@ -45,9 +46,12 @@ class TouchUp: NSObject, ObservableObject {
     /// Source of truth for the UI and for the delegate resolution.
     @Published var digitizerConfigs: [HIDLocationID: DigitizerConfig] = [:]
 
-    /// All configs ever persisted (also for digitizers that are currently disconnected),
-    /// keyed by `HIDLocationID`. Loaded once at launch, re-saved on every `persistMapping`.
-    private var persistedConfigs: [HIDLocationID: DigitizerConfig] = [:]
+    /// Every digitizer ever persisted (also ones currently disconnected), matched to devices by
+    /// identity rather than port. Loaded once at launch, re-saved on every `persistMapping`.
+    private var persistedRecords: [DigitizerRecord] = []
+
+    /// Which persisted record each connected digitizer was matched to on connect.
+    private var recordIDByLocationID: [HIDLocationID: UUID] = [:]
 
     /// `CGDirectDisplayID` of the screen that connected most recently. Used as the implicit
     /// fallback target when a digitizer has no (matching) stored screen identity.
@@ -79,7 +83,23 @@ class TouchUp: NSObject, ObservableObject {
     
     func checkAccessibilityAccessGranted() {
         let checkOptPrompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString
-        self.isAccessibilityAccessGranted = AXIsProcessTrustedWithOptions([checkOptPrompt: true] as CFDictionary?)
+        let axTrusted = AXIsProcessTrustedWithOptions([checkOptPrompt: true] as CFDictionary?)
+
+        // Posting mouse events is gated separately from Accessibility trust: a sandboxed app
+        // can be AX-trusted and still have every CGEventPost silently dropped.
+        let canPostEvents = CGPreflightPostEventAccess()
+        if !canPostEvents {
+            CGRequestPostEventAccess()
+        }
+
+        let inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
+        NSLog("TouchDown permissions — accessibility: %@, post events: %@, input monitoring: %@",
+              axTrusted ? "granted" : "missing",
+              canPostEvents ? "granted" : "missing",
+              inputMonitoring == kIOHIDAccessTypeGranted ? "granted"
+                : inputMonitoring == kIOHIDAccessTypeDenied ? "denied" : "not determined")
+
+        self.isAccessibilityAccessGranted = axTrusted && canPostEvents
     }
     
     func grantAccessibilityAccess() {
@@ -94,7 +114,7 @@ class TouchUp: NSObject, ObservableObject {
 
         super.init()
 
-        self.loadDigitizerConfigs()
+        self.loadDigitizerRecords()
         self.screenParametersDidChange()
         
         self.touchManager.delegate = self
@@ -121,7 +141,7 @@ extension TouchUp {
         let defaults = UserDefaults.standard
         
         defaults.register(defaults: [
-            "holdDuration" : 0.1,
+            "holdDuration" : 0,
             "doubleClickDistance" : 8,
             "stationaryThreshold" : 0.1,
             "edgeDeadZone" : 0,
@@ -196,7 +216,9 @@ extension TouchUp {
 // MARK: - Per-Digitizer Screen Mapping
 extension TouchUp {
 
-    private static let digitizerConfigsKey = "digitizerConfigs"
+    private static let digitizerRecordsKey = "digitizerRecords"
+    /// Pre-identity format: `[locationID: DigitizerConfig]`. Read once for migration.
+    private static let legacyDigitizerConfigsKey = "digitizerConfigs"
 
     /// The screen a freshly connected (or unmatched) digitizer maps to by default: the one
     /// that connected most recently, falling back to the last screen in the arrangement.
@@ -247,6 +269,14 @@ extension TouchUp {
         persistMapping(forLocationID: locationID)
     }
 
+    /// Stores (or clears, with `nil`) the calibration of a digitizer and persists it immediately.
+    func setCalibration(_ calibration: DigitizerCalibration?, forDigitizer locationID: HIDLocationID) {
+        guard var config = digitizerConfigs[locationID] else { return }
+        config.calibration = calibration
+        digitizerConfigs[locationID] = config
+        persistMapping(forLocationID: locationID)
+    }
+
     /// Freezes the currently resolved screen (id + uuid) and rotation of one digitizer into
     /// persistent storage. Covers both cases: an explicit user edit, and an implicit mapping
     /// that worked fine and should stick (called for all digitizers before the window closes).
@@ -264,8 +294,20 @@ extension TouchUp {
         }
 
         digitizerConfigs[locationID] = config
-        persistedConfigs[locationID] = config
-        saveDigitizerConfigs()
+
+        let identity = connectedDigitizers.first { $0.locationID == locationID }?.identity
+        if let id = recordIDByLocationID[locationID],
+           let index = persistedRecords.firstIndex(where: { $0.id == id }) {
+            persistedRecords[index].config = config
+            persistedRecords[index].lastLocationID = locationID
+            // Fills in the identity of a record migrated from the port-keyed format.
+            if let identity { persistedRecords[index].identity = identity }
+        } else {
+            let record = DigitizerRecord(identity: identity, lastLocationID: locationID, config: config)
+            persistedRecords.append(record)
+            recordIDByLocationID[locationID] = record.id
+        }
+        saveDigitizerRecords()
     }
 
     /// Persists the mapping of every currently connected digitizer. Call before the settings
@@ -288,21 +330,27 @@ extension TouchUp {
         connectionState = anyResolved ? .connectedPreferred : .uncertain
     }
 
-    func loadDigitizerConfigs() {
-        guard let data = UserDefaults.standard.data(forKey: Self.digitizerConfigsKey),
+    func loadDigitizerRecords() {
+        let defaults = UserDefaults.standard
+        if let data = defaults.data(forKey: Self.digitizerRecordsKey),
+           let decoded = try? JSONDecoder().decode([DigitizerRecord].self, from: data) {
+            persistedRecords = decoded
+            return
+        }
+
+        // Migrate the old format: configs keyed by location ID (as a string, since JSON object
+        // keys are strings). These records get their identity on the next persist.
+        guard let data = defaults.data(forKey: Self.legacyDigitizerConfigsKey),
               let decoded = try? JSONDecoder().decode([String: DigitizerConfig].self, from: data)
         else { return }
-
-        // JSON object keys are strings; map them back to numeric location IDs.
-        persistedConfigs = Dictionary(uniqueKeysWithValues: decoded.compactMap { key, value in
-            HIDLocationID(key).map { ($0, value) }
-        })
+        persistedRecords = decoded.compactMap { key, config in
+            HIDLocationID(key).map { DigitizerRecord(identity: nil, lastLocationID: $0, config: config) }
+        }
     }
 
-    private func saveDigitizerConfigs() {
-        let encodable = Dictionary(uniqueKeysWithValues: persistedConfigs.map { (String($0.key), $0.value) })
-        if let data = try? JSONEncoder().encode(encodable) {
-            UserDefaults.standard.set(data, forKey: Self.digitizerConfigsKey)
+    private func saveDigitizerRecords() {
+        if let data = try? JSONEncoder().encode(persistedRecords) {
+            UserDefaults.standard.set(data, forKey: Self.digitizerRecordsKey)
         }
     }
 }
@@ -322,6 +370,10 @@ extension TouchUp: TUCTouchDelegate {
 
     func digitizerRotation(forLocationID locationID: UInt32) -> CGFloat {
         digitizerConfigs[locationID]?.additionalRotation ?? 0
+    }
+
+    func digitizerCalibration(forLocationID locationID: UInt32) -> CGAffineTransform {
+        digitizerConfigs[locationID]?.calibration?.transform ?? .identity
     }
     
     func action(for gesture: TUCCursorGesture) -> TUCCursorAction {
@@ -358,12 +410,20 @@ extension TouchUp: TUCTouchDelegate {
     
     
     func touchscreenDidConnect(withLocationID locationID: UInt32) {
-        self.connectedDigitizers.append(Digitizer(locationID: locationID))
+        let digitizer = Digitizer(locationID: locationID)
+        let others = connectedDigitizers.filter { $0.locationID != locationID }
+        self.connectedDigitizers.append(digitizer)
 
-        // Restore a previously persisted config for this digitizer, or start a blank one
-        // (which resolves implicitly to the most recently added screen).
+        // Restore the persisted config for this device — wherever it was plugged in last — or
+        // start a blank one (which resolves implicitly to the most recently added screen).
         if digitizerConfigs[locationID] == nil {
-            digitizerConfigs[locationID] = persistedConfigs[locationID] ?? DigitizerConfig()
+            let record = DigitizerRecord.match(identity: digitizer.identity,
+                                               locationID: locationID,
+                                               in: persistedRecords,
+                                               claimed: Set(recordIDByLocationID.values),
+                                               otherConnected: others.map(\.identity))
+            recordIDByLocationID[locationID] = record?.id
+            digitizerConfigs[locationID] = record?.config ?? DigitizerConfig()
         }
 
         updateConnectionState()
@@ -373,8 +433,9 @@ extension TouchUp: TUCTouchDelegate {
         if let index = self.connectedDigitizers.firstIndex(where: {$0.locationID == locationID}) {
             self.connectedDigitizers.remove(at: index)
         }
-        // Drop the live config; the persisted copy in `persistedConfigs` survives for reconnect.
+        // Drop the live config; the persisted record survives for reconnect, on any port.
         digitizerConfigs[locationID] = nil
+        recordIDByLocationID[locationID] = nil
 
         updateConnectionState()
     }
@@ -463,16 +524,40 @@ enum ConnectionState: Int {
         case .disconnected:
             image = NSImage(systemSymbolName: "rectangle.badge.xmark", accessibilityDescription: nil)
         default:
-            image = NSImage(systemSymbolName: "hand.point.up.left", accessibilityDescription: nil)
+            image = NSImage(systemSymbolName: "hand.point.down", accessibilityDescription: nil)?
+                .rotated(byDegrees: 20)
         }
-        
+
         image?.isTemplate = true
-        
+
         return image
     }
-    
+
     var isConnected: Bool {
         return self == .connectedPreferred || self == .connectedHotPlug
+    }
+}
+
+
+extension NSImage {
+    /// A copy rotated clockwise by `degrees`, on a canvas grown just enough that no corner is
+    /// clipped.
+    func rotated(byDegrees degrees: CGFloat) -> NSImage {
+        let radians = -degrees * .pi / 180   // AppKit's y axis points up, so clockwise is negative
+        let original = size
+        let canvas = NSSize(
+            width: abs(original.width * cos(radians)) + abs(original.height * sin(radians)),
+            height: abs(original.width * sin(radians)) + abs(original.height * cos(radians)))
+
+        return NSImage(size: canvas, flipped: false) { _ in
+            let transform = NSAffineTransform()
+            transform.translateX(by: canvas.width / 2, yBy: canvas.height / 2)
+            transform.rotate(byRadians: radians)
+            transform.concat()
+            self.draw(in: NSRect(x: -original.width / 2, y: -original.height / 2,
+                                 width: original.width, height: original.height))
+            return true
+        }
     }
 }
 

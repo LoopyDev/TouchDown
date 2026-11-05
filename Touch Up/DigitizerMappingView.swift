@@ -57,6 +57,33 @@ struct DigitizerMappingView: View {
                 })
                 .foregroundColor(.accentColor)
                 .buttonStyle(.plain)
+
+                Button(action: {
+                    let screen = model.resolvedMapping(forLocationID: digitizer.locationID).screen
+                    (NSApp.delegate as? AppDelegate)?.showCalibration(on: screen, digitizer: digitizer.locationID)
+                }, label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "scope")
+                        Text("Calibrate")
+                    }
+                    .font(.caption)
+                })
+                .foregroundColor(.accentColor)
+                .buttonStyle(.plain)
+                .padding(.leading, 6)
+
+                if model.digitizerConfigs[digitizer.locationID]?.calibration != nil {
+                    Button(action: {
+                        model.setCalibration(nil, forDigitizer: digitizer.locationID)
+                    }, label: {
+                        Text("Reset")
+                            .font(.caption)
+                    })
+                    .foregroundColor(.secondary)
+                    .buttonStyle(.plain)
+                    .help("Remove the calibration for this touchscreen")
+                    .padding(.leading, 6)
+                }
             }
 
             HStack(spacing: 8) {

@@ -15,9 +15,9 @@ struct SettingsView: View {
     var welcomeBanner: some View {
         Group {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Welcome to Touch Up 🐑")
+                Text("Welcome to TouchDown")
                     .font(.largeTitle)
-                Text("Touch Up converts USB HID data from any Windows certified touchscreen to mouse events.\nInjecting mouse events requires access to accessibility APIs. You can allow this by clicking the button below.")
+                Text("TouchDown converts USB HID data from any Windows certified touchscreen to mouse events.\nInjecting mouse events requires access to accessibility APIs. You can allow this by clicking the button below.")
             }
             
             HStack {
@@ -122,17 +122,23 @@ struct SettingsView: View {
             Spacer()
             VStack {
                 if let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
-                    Text("Touch Up v\(versionString)")
+                    Text("TouchDown v\(versionString)")
                         .font(.title2)
                 }
 
-                Text("Made with 🐑 in Aachen")
-                    .font(.footnote)
-                
-                Link(destination: URL(string: "https://github.com/shueber/Touch-Up")!, label: {
+                Link(destination: URL(string: "https://github.com/LoopyDev/TouchDown")!, label: {
                     Label("GitHub", systemImage: "link")
                         .foregroundColor(.accentColor)
                 })
+
+                // Credit the project this is forked from.
+                HStack(spacing: 4) {
+                    Text("Based on")
+                    Link("Touch Up", destination: URL(string: "https://github.com/shueber/Touch-Up")!)
+                    Text("by Sebastian Hueber, made with 🐑 in Aachen")
+                }
+                .font(.footnote)
+                .padding(.top, 2)
             }
             .padding(.vertical)
             Spacer()

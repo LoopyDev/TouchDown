@@ -127,6 +127,7 @@
     }
     
     [touch setLocation: point];
+    [touch setRawLocation: digitizerPoint];
     [touch setIsOnSurface:isOnSurface];
     [touch setConfidenceFlag:confidenceFlag];
     [touch setLastUpdated:[self currentFrameIDForLocationID:locationID]];
@@ -537,22 +538,43 @@
 
 #pragma mark - Screen Characteristics
 
+/// Display rotation plus the user-chosen extra digitizer rotation, normalised to 0…<360.
+- (CGFloat)effectiveRotationForLocationID:(uint32_t)locationID {
+    CGFloat rotation = [self touchscreenForLocationID:locationID].rotation;
+    rotation += [[self delegate] digitizerRotationForLocationID:locationID];
+    rotation = fmod(rotation, 360);
+    if (rotation < 0) {
+        rotation += 360;
+    }
+    return rotation;
+}
+
+- (CGAffineTransform)calibrationForLocationID:(uint32_t)locationID {
+    id<TUCTouchDelegate> delegate = self.delegate;
+    if ([delegate respondsToSelector:@selector(digitizerCalibrationForLocationID:)]) {
+        return [delegate digitizerCalibrationForLocationID:locationID];
+    }
+    return CGAffineTransformIdentity;
+}
+
 /**
  the relative hardware points are always in the direction the digitizer is built in.
  If the display is rotated, we need to rotate these points
  */
 - (CGPoint)convertDigitizerPointToRelativeScreenPoint:(CGPoint)devicePoint locationID:(uint32_t)locationID {
+    return [self convertDigitizerPoint:devicePoint
+  toRelativeScreenPointWithCalibration:[self calibrationForLocationID:locationID]
+                            locationID:locationID];
+}
+
+- (CGPoint)convertDigitizerPoint:(CGPoint)digitizerPoint toRelativeScreenPointWithCalibration:(CGAffineTransform)calibration locationID:(uint32_t)locationID {
     TUCScreen *screen = [self touchscreenForLocationID:locationID];
 
-    CGFloat rotation = screen.rotation;
+    // Correct the digitizer's own error first, in its own (unrotated) frame, so a
+    // calibration stays valid when the display is rotated later.
+    CGPoint devicePoint = CGPointApplyAffineTransform(digitizerPoint, calibration);
 
-    CGFloat extra = [[self delegate] digitizerRotationForLocationID:locationID];
-
-    rotation += extra;
-    rotation = fmod(rotation, 360);
-    if (rotation < 0) {
-        rotation += 360;
-    }
+    CGFloat rotation = [self effectiveRotationForLocationID:locationID];
 
     // Rotate the glass-relative point into the screen's content orientation.
     CGPoint rotated;
@@ -569,6 +591,23 @@
     // Then account for any letterboxing when the content doesn't fill the panel (mirroring
     // a differently-shaped display). A no-op when the aspect ratios already match.
     return [screen convertGlassPointToContentPoint:rotated];
+}
+
+- (CGPoint)convertRelativeScreenPointToUncalibratedDigitizerPoint:(CGPoint)screenPoint locationID:(uint32_t)locationID {
+    TUCScreen *screen = [self touchscreenForLocationID:locationID];
+    CGPoint r = [screen convertContentPointToGlassPoint:screenPoint];
+
+    CGFloat rotation = [self effectiveRotationForLocationID:locationID];
+
+    // Exact inverses of the rotations above.
+    if (rotation == 180) {
+        return CGPointMake(1 - r.x, 1 - r.y);
+    } else if (rotation == 90) {
+        return CGPointMake(r.y, 1 - r.x);
+    } else if (rotation == 270) {
+        return CGPointMake(1 - r.y, r.x);
+    }
+    return r;
 }
 
 
@@ -723,7 +762,7 @@
         self.identifiedMultitouchGesture = _TUCCursorGestureNone;
         
         self.doubleClickTolerance = 5;
-        self.holdDuration = 0.08;
+        self.holdDuration = 0;
         self.stationaryThreshold = 0.1;
         self.edgeDeadZone = 0;
         self.errorResistance = 0;
