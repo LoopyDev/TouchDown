@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		70CA1B0B2FE0A00100C0FFEE /* CalibrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70CA1B0A2FE0A00100C0FFEE /* CalibrationView.swift */; };
 		701C965329C9E51500CA833C /* TUCScreen.h in Headers */ = {isa = PBXBuildFile; fileRef = 701C965129C9E51500CA833C /* TUCScreen.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		701C965429C9E51500CA833C /* TUCScreen.m in Sources */ = {isa = PBXBuildFile; fileRef = 701C965229C9E51500CA833C /* TUCScreen.m */; };
 		702F2BA7298D448D00415DEA /* TUCTouch.h in Headers */ = {isa = PBXBuildFile; fileRef = 702F2BA5298D448D00415DEA /* TUCTouch.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -60,6 +61,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		70CA1B0A2FE0A00100C0FFEE /* CalibrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationView.swift; sourceTree = "<group>"; };
 		701C965129C9E51500CA833C /* TUCScreen.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TUCScreen.h; sourceTree = "<group>"; };
 		701C965229C9E51500CA833C /* TUCScreen.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TUCScreen.m; sourceTree = "<group>"; };
 		702F2BA5298D448D00415DEA /* TUCTouch.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TUCTouch.h; sourceTree = "<group>"; };
@@ -135,6 +137,7 @@
 				70335ECA2FD15FBA00FD74B5 /* DigitizerMappingView.swift */,
 				70D2AFD02FC04E6400342757 /* DebugOverlay.swift */,
 				704B2C6829978B2900A1DE4D /* DebugView.swift */,
+				70CA1B0A2FE0A00100C0FFEE /* CalibrationView.swift */,
 				70FC06B52FC07F4100AB7995 /* Digitizer.swift */,
 				70D2AFCE2FC04C0800342757 /* HIDLocationID.swift */,
 				7052F431298D2D280066014F /* Assets.xcassets */,
@@ -293,6 +296,7 @@
 				702F2BAA298D57BD00415DEA /* SettingsView.swift in Sources */,
 				70C8D697298D5D2B00CFA6D4 /* TouchUp.swift in Sources */,
 				70335ECB2FD15FBA00FD74B5 /* DigitizerMappingView.swift in Sources */,
+				70CA1B0B2FE0A00100C0FFEE /* CalibrationView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -20,6 +20,69 @@ struct DigitizerConfig: Codable, Hashable {
     /// Stable per physical panel across launches/rearrangements. Stronger match.
     var screenUUID: String?
     var additionalRotation: CGFloat = 0
+    /// Affine correction for a digitizer that doesn't line up with its panel. `nil` = none.
+    /// Optional so configs saved by older versions still decode.
+    var calibration: DigitizerCalibration?
+}
+
+
+/// An affine map from the raw digitizer point (normalised, digitizer orientation) to the point
+/// a perfectly aligned digitizer would report:  x' = a·x + c·y + tx,  y' = b·x + d·y + ty
+struct DigitizerCalibration: Codable, Hashable {
+    var a: Double = 1, b: Double = 0, c: Double = 0, d: Double = 1, tx: Double = 0, ty: Double = 0
+
+    init(a: Double, b: Double, c: Double, d: Double, tx: Double, ty: Double) {
+        (self.a, self.b, self.c, self.d, self.tx, self.ty) = (a, b, c, d, tx, ty)
+    }
+
+    var transform: CGAffineTransform {
+        CGAffineTransform(a: a, b: b, c: c, d: d, tx: tx, ty: ty)
+    }
+
+    /// Least-squares affine fit mapping `raw[i]` onto `target[i]`. Needs at least three
+    /// non-collinear pairs; more points average out finger-placement error.
+    /// Returns `nil` if the points are degenerate or the result is implausible
+    /// (e.g. a target was tapped in the wrong place).
+    static func fit(raw: [CGPoint], target: [CGPoint]) -> DigitizerCalibration? {
+        guard raw.count == target.count, raw.count >= 3 else { return nil }
+
+        // Normal equations  MᵀM·p = Mᵀu  with rows [x, y, 1], solved once per output axis.
+        var m = [[Double]](repeating: [0, 0, 0], count: 3)
+        var bu = [0.0, 0.0, 0.0], bv = [0.0, 0.0, 0.0]
+        for (r, t) in zip(raw, target) {
+            let row = [Double(r.x), Double(r.y), 1.0]
+            for i in 0..<3 {
+                for j in 0..<3 { m[i][j] += row[i] * row[j] }
+                bu[i] += row[i] * Double(t.x)
+                bv[i] += row[i] * Double(t.y)
+            }
+        }
+
+        guard let pu = solve3x3(m, bu), let pv = solve3x3(m, bv) else { return nil }
+        let result = DigitizerCalibration(a: pu[0], b: pv[0], c: pu[1], d: pv[1], tx: pu[2], ty: pv[2])
+
+        // A real misalignment is a small correction. Reject anything that scales the
+        // surface by more than 2x or collapses it — that means a sample was bad.
+        let det = abs(result.a * result.d - result.b * result.c)
+        guard det.isFinite, det > 0.25, det < 4 else { return nil }
+        return result
+    }
+
+    private static func solve3x3(_ m: [[Double]], _ b: [Double]) -> [Double]? {
+        func det(_ k: [[Double]]) -> Double {
+            k[0][0] * (k[1][1] * k[2][2] - k[1][2] * k[2][1])
+          - k[0][1] * (k[1][0] * k[2][2] - k[1][2] * k[2][0])
+          + k[0][2] * (k[1][0] * k[2][1] - k[1][1] * k[2][0])
+        }
+        let d = det(m)
+        guard abs(d) > 1e-12 else { return nil }
+        // Cramer's rule — plenty for a well-conditioned 3x3.
+        return (0..<3).map { col in
+            var k = m
+            for row in 0..<3 { k[row][col] = b[row] }
+            return det(k) / d
+        }
+    }
 }
 
 /// How confidently a digitizer's stored screen identity could be resolved against the

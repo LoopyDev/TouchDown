@@ -207,6 +207,20 @@
 }
 
 
+- (CGPoint)convertContentPointToGlassPoint:(CGPoint)contentPoint {
+    CGFloat glassAspect   = self.nativeResolution.width / self.nativeResolution.height;
+    CGFloat contentAspect = self.frame.size.width / self.frame.size.height;
+    if (glassAspect <= 0 || contentAspect <= 0) {
+        return contentPoint;
+    }
+
+    CGFloat fracW = (contentAspect >= glassAspect) ? 1.0 : contentAspect / glassAspect;
+    CGFloat fracH = (contentAspect >= glassAspect) ? glassAspect / contentAspect : 1.0;
+
+    return CGPointMake(contentPoint.x * fracW + (1.0 - fracW) / 2.0,
+                       contentPoint.y * fracH + (1.0 - fracH) / 2.0);
+}
+
 
 - (NSString *)debugDescription {
     CGDirectDisplayID master = CGDisplayMirrorsDisplay((CGDirectDisplayID)self.id);

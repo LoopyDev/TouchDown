@@ -78,6 +78,18 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (CGPoint)convertScreenPointRelativeToAbsolute:(CGPoint)relativePoint locationID:(uint32_t)locationID;
 
+/**
+ Maps a raw, normalised digitizer point to a relative screen point, applying the given
+ calibration instead of the delegate's. Lets a calibration UI preview a candidate transform.
+ */
+- (CGPoint)convertDigitizerPoint:(CGPoint)digitizerPoint toRelativeScreenPointWithCalibration:(CGAffineTransform)calibration locationID:(uint32_t)locationID NS_SWIFT_NAME(relativeScreenPoint(forDigitizerPoint:calibration:locationID:));
+
+/**
+ The inverse of the (uncalibrated) mapping: which raw digitizer point a perfectly
+ calibrated digitizer would report for a given relative screen point.
+ */
+- (CGPoint)convertRelativeScreenPointToUncalibratedDigitizerPoint:(CGPoint)screenPoint locationID:(uint32_t)locationID NS_SWIFT_NAME(digitizerPoint(forRelativeScreenPoint:locationID:));
+
 
 - (void)triggerSystemAccessibilityAccessAlert;
 

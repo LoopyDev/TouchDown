@@ -247,6 +247,14 @@ extension TouchUp {
         persistMapping(forLocationID: locationID)
     }
 
+    /// Stores (or clears, with `nil`) the calibration of a digitizer and persists it immediately.
+    func setCalibration(_ calibration: DigitizerCalibration?, forDigitizer locationID: HIDLocationID) {
+        guard var config = digitizerConfigs[locationID] else { return }
+        config.calibration = calibration
+        digitizerConfigs[locationID] = config
+        persistMapping(forLocationID: locationID)
+    }
+
     /// Freezes the currently resolved screen (id + uuid) and rotation of one digitizer into
     /// persistent storage. Covers both cases: an explicit user edit, and an implicit mapping
     /// that worked fine and should stick (called for all digitizers before the window closes).
@@ -322,6 +330,10 @@ extension TouchUp: TUCTouchDelegate {
 
     func digitizerRotation(forLocationID locationID: UInt32) -> CGFloat {
         digitizerConfigs[locationID]?.additionalRotation ?? 0
+    }
+
+    func digitizerCalibration(forLocationID locationID: UInt32) -> CGAffineTransform {
+        digitizerConfigs[locationID]?.calibration?.transform ?? .identity
     }
     
     func action(for gesture: TUCCursorGesture) -> TUCCursorAction {

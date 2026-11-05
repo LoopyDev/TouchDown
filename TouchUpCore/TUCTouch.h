@@ -55,6 +55,10 @@ typedef NS_ENUM(NSUInteger, TUCCursorAction) {
 @property (nonatomic) CGPoint location;
 @property CGPoint previousLocation;
 
+/// The last reported position, normalised to the digitizer surface (0…1) exactly as the
+/// hardware reports it: before calibration, rotation and letterboxing. Used to calibrate.
+@property CGPoint rawLocation;
+
 @property NSInteger lastUpdated; // the page ID during last update
 
 

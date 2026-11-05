@@ -44,6 +44,16 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (CGFloat)digitizerRotationForLocationID:(uint32_t)locationID;
 
+@optional
+
+/**
+ An affine correction applied to the raw, normalised digitizer point (0…1, in the
+ digitizer's own orientation) before rotation and screen mapping. Use it to correct a
+ digitizer that is slightly offset, scaled or skewed relative to the panel underneath.
+ Return `CGAffineTransformIdentity` (or don't implement this) for no correction.
+ */
+- (CGAffineTransform)digitizerCalibrationForLocationID:(uint32_t)locationID NS_SWIFT_NAME(digitizerCalibration(forLocationID:));
+
 @end
 
 NS_ASSUME_NONNULL_END

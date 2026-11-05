@@ -69,6 +69,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// The result is clamped to [0,1]; touches on the bars snap to the edge.
 - (CGPoint)convertGlassPointToContentPoint:(CGPoint)glassPoint;
 
+/// Inverse of `convertGlassPointToContentPoint:` (without clamping).
+- (CGPoint)convertContentPointToGlassPoint:(CGPoint)contentPoint;
+
 /// The `NSScreen` backing this panel. For a mirrored secondary this is the mirror
 /// master's `NSScreen`, since that is where the panel's content lives.
 - (nullable NSScreen *)systemScreen;
