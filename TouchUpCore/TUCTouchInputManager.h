@@ -33,14 +33,23 @@ NS_ASSUME_NONNULL_BEGIN
 @property CGFloat doubleClickTolerance;
 
 /**
- How long the user has to hold before a drag gesture turns into holdAndDrag.
+ How long the finger has to rest inside `touchSlop` before moving for the movement to be a
+ holdAndDrag instead of a drag. Moving off sooner is a drag (by default a scroll). At 0, every
+ movement is a holdAndDrag. The default value is 0.08 s.
  */
 @property NSTimeInterval holdDuration;
 
 /**
+ Radius in mm around the point where a finger landed within which it doesn't count as moving.
+ Leaving it cancels a tap and starts a drag or holdAndDrag; wobble inside it is ignored.
+ The default value is 1.5 mm.
+ */
+@property CGFloat touchSlop;
+
+/**
  The maximum distance in mm a touch may travel between two reports while still counting as
- stationary. Larger values tolerate more finger jitter before a touch is treated as moving
- (which is what disqualifies a tap and starts a drag).
+ stationary, which sets each touch's `phase`. Once a finger has left `touchSlop`, it also
+ decides when a drag pauses.
  */
 @property CGFloat stationaryThreshold;
 
